@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Project specific
+savegame.json
+debug_*.py
+test_*.py
+
+# EXE / Packaging
+build/
+dist/
+*.spec
+*.exe
