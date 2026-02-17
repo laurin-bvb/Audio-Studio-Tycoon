@@ -9,6 +9,7 @@ import random
 import json
 import os
 from models import GameProject, ReviewScore, Employee, Engine, EngineFeature
+from translations import TRANSLATIONS
 from game_data import (
     get_compatibility, get_ideal_sliders, SLIDER_NAMES, GENRES,
     PLATFORMS, AUDIENCE_MULTI, AUDIENCE_PRICE,
@@ -64,6 +65,12 @@ class GameState:
         # Posteingang
         self.emails = []
 
+        # Einstellungen
+        self.settings = {
+            "language": "de",
+            "music_enabled": True
+        }
+
     def _init_starter_engine(self):
         """Erstellt die Starter-Engine mit Basis-Features."""
         starter_features = []
@@ -90,6 +97,17 @@ class GameState:
             "marketing": "Kein Marketing",
         }
 
+    def get_text(self, key, **kwargs):
+        """Holt einen übersetzten Text basierend auf dem aktuellen Sprach-Setting."""
+        lang = self.settings.get("language", "de")
+        text = TRANSLATIONS.get(lang, TRANSLATIONS['de']).get(key, key)
+        if kwargs:
+            try:
+                return text.format(**kwargs)
+            except Exception:
+                return text
+        return text
+
     # ==========================================================
     # MITARBEITER
     # ==========================================================
@@ -103,9 +121,15 @@ class GameState:
 
     def generate_candidate(self):
         """Generiert einen zufälligen Bewerber."""
+        from game_data import EMPLOYEE_SPECIALIZATIONS
         role_data = random.choice(EMPLOYEE_ROLES)
         level = random.randint(1, min(3, 1 + self.games_made // 3))
-        return Employee(role_data=role_data, skill_level=level)
+        
+        spec = None
+        if random.random() < 0.3: # 30% Chance auf Spezialisierung
+            spec = random.choice(EMPLOYEE_SPECIALIZATIONS)
+            
+        return Employee(role_data=role_data, skill_level=level, specialization=spec)
 
     def hire_employee(self, employee):
         """Stellt einen Mitarbeiter ein."""
@@ -601,8 +625,9 @@ class GameState:
     # SPEICHERN / LADEN
     # ==========================================================
 
-    def save_game(self, filepath="savegame.json"):
-        """Speichert den Spielstand."""
+    def save_game(self, slot=1):
+        """Speichert den Spielstand in einem Slot."""
+        filepath = f"save_slot_{slot}.json"
         data = {
             "company_name": self.company_name,
             "money": self.money,
@@ -615,6 +640,7 @@ class GameState:
             "last_event_week": self.last_event_week,
             "last_trend_week": self.last_trend_week,
             "current_trend": self.current_trend,
+            "settings": self.settings,
             "game_history": [g.to_dict() for g in self.game_history],
             "employees": [e.to_dict() for e in self.employees],
             "engines": [
@@ -627,13 +653,37 @@ class GameState:
                 {"category": f.category, "name": f.name, "tech_bonus": f.tech_bonus}
                 for f in self.unlocked_features
             ],
+            "emails": [
+                {
+                    "sender": m.sender, "subject": m.subject, "body": m.body,
+                    "date_week": m.date_week, "game_name": m.game_name,
+                    "is_bug": m.is_bug, "is_read": m.is_read
+                } for m in self.emails
+            ]
         }
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         return True
 
-    def load_game(self, filepath="savegame.json"):
-        """Lädt einen Spielstand."""
+    def get_save_slots_info(self):
+        """Gibt Infos über die 3 verfügbaren Slots zurück."""
+        slots = {}
+        for i in range(1, 4):
+            path = f"save_slot_{i}.json"
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    slots[i] = f"Slot {i}: {data['company_name']} (Woche {data['week']}, {data['money']:,} Euro)"
+                except:
+                    slots[i] = f"Slot {i}: [FEHLERHAFT]"
+            else:
+                slots[i] = f"Slot {i}: [LEER]"
+        return slots
+
+    def load_game(self, slot=1):
+        """Lädt einen Spielstand aus einem Slot."""
+        filepath = f"save_slot_{slot}.json"
         if not os.path.exists(filepath):
             return False
 
@@ -696,7 +746,18 @@ class GameState:
             emp.salary = ed["salary"]
             emp.morale = ed["morale"]
             emp.weeks_employed = ed["weeks_employed"]
+            emp.specialization = ed.get("specialization")
             self.employees.append(emp)
+
+        # E-Mails laden
+        self.emails = []
+        from models import Email
+        for md in data.get("emails", []):
+            mail = Email(md["sender"], md["subject"], md["body"], md["date_week"], md.get("game_name"), md.get("is_bug", False))
+            mail.is_read = md.get("is_read", False)
+            self.emails.append(mail)
+
+        self.settings = data.get("settings", {"language": "de", "music_enabled": True})
 
         self.reset_draft()
         return True

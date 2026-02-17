@@ -149,7 +149,7 @@ class Engine:
 class Employee:
     """Ein Mitarbeiter des Studios."""
 
-    def __init__(self, name=None, role_data=None, skill_level=1):
+    def __init__(self, name=None, role_data=None, skill_level=1, specialization=None):
         """
         role_data: Dict aus EMPLOYEE_ROLES (role, primary, secondary)
         skill_level: 1-5, beeinflusst Skills und Gehalt
@@ -164,6 +164,7 @@ class Employee:
         self.primary_skill = role_data["primary"] if role_data else "Gameplay"
         self.secondary_skill = role_data["secondary"] if role_data else "Grafik"
         self.skill_level = skill_level
+        self.specialization = specialization  # Dict aus EMPLOYEE_SPECIALIZATIONS oder None
 
         # Skills basierend auf Rolle und Level generieren
         self.skills = self._generate_skills()
@@ -211,7 +212,7 @@ class Employee:
             f"Level {self.skill_level}. "
             f"Gehalt: {self.salary} Euro pro Woche. "
             f"Moral: {self.morale} Prozent."
-        )
+        ) + (f" Spezialisierung: {self.specialization['name']}." if self.specialization else "")
 
     def detail(self):
         """Detaillierte Info für NVDA."""
@@ -234,6 +235,7 @@ class Employee:
             "primary_skill": self.primary_skill,
             "secondary_skill": self.secondary_skill,
             "skill_level": self.skill_level,
+            "specialization": self.specialization,
             "skills": self.skills,
             "salary": self.salary,
             "morale": self.morale,

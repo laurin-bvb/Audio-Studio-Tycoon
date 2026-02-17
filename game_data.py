@@ -29,6 +29,11 @@ TOPICS = [
     "Superheld",
     "Cyberpunk",
     "Detektiv",
+    "Dinosaurier",
+    "Vampire",
+    "Feuerwehr",
+    "Polizei",
+    "Wilder Westen",
 ]
 
 # ============================================================
@@ -43,6 +48,9 @@ GENRES = [
     "Puzzle",
     "Sport",
     "Casual",
+    "Horror",
+    "Kampfspiel",
+    "Rennspiel",
 ]
 
 # ============================================================
@@ -249,6 +257,19 @@ EMPLOYEE_ROLES = [
     {"role": "Sound-Engineer", "primary": "Sound",    "secondary": "Gameplay"},
     {"role": "Autor",          "primary": "Story",    "secondary": "Welt"},
     {"role": "Allrounder",     "primary": "Gameplay", "secondary": "Grafik"},
+]
+
+# ============================================================
+# MITARBEITER-SPEZIALISIERUNGEN (Boni)
+# ============================================================
+EMPLOYEE_SPECIALIZATIONS = [
+    {"name": "Sound-Genie",      "bonus_type": "Sound",    "bonus_value": 0.2, "description": "Verbessert die Audio-Qualität massiv."},
+    {"name": "Code-Maschine",    "bonus_type": "KI",       "bonus_value": 0.2, "description": "Optimiert Programmierung und KI."},
+    {"name": "Design-Gott",      "bonus_type": "Grafik",   "bonus_value": 0.2, "description": "Ein Auge für erstklassige Grafik."},
+    {"name": "Story-Master",     "bonus_type": "Story",    "bonus_value": 0.2, "description": "Schreibt packende Dialoge und Plots."},
+    {"name": "Motivationstrainer", "bonus_type": "Moral",   "bonus_value": 10,  "description": "Hält die Moral im Team hoch."},
+    {"name": "Bug-Jäger",        "bonus_type": "Bugs",     "bonus_value": 0.5, "description": "Findet und behebt Bugs doppelt so schnell."},
+    {"name": "Marketing-Experte", "bonus_type": "Marketing", "bonus_value": 0.3, "description": "Erhöht die Effektivität von Marketing."},
 ]
 
 # ============================================================
@@ -532,10 +553,16 @@ def get_ideal_sliders(genre):
 def get_available_platforms(week):
     """Gibt Plattformen zurück, die in der aktuellen Woche verfügbar sind."""
     current_week = float(week)
-    return [p for p in PLATFORMS if float(p["available_week"]) <= current_week and (p["end_week"] is None or float(p["end_week"]) >= current_week)]
+    available = []
+    for p in PLATFORMS:
+        start = float(p["available_week"]) if p["available_week"] is not None else 0.0
+        end = float(p["end_week"]) if p["end_week"] is not None else 99999.0
+        if start <= current_week <= end:
+            available.append(p)
+    return available
 
 
 def get_available_features(week):
     """Gibt Engine-Features zurück, die in der aktuellen Woche erforschbar sind."""
     current_week = int(week)
-    return [f for f in ENGINE_FEATURES if f["week"] <= current_week]
+    return [f for f in ENGINE_FEATURES if int(f["week"]) <= current_week]

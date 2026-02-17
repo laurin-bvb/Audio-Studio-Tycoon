@@ -14,6 +14,7 @@ from menus import (
     MainMenu,
     CompanyNameMenu,
     GameMenu,
+    SettingsMenu,
     TopicMenu,
     GenreMenu,
     PlatformMenu,
@@ -40,6 +41,9 @@ from menus import (
     EmailDetailMenu,
     ServiceMenu,
     GameServiceOptionsMenu,
+    SaveMenu,
+    LoadMenu,
+    HelpMenu,
 )
 
 
@@ -94,6 +98,11 @@ def main():
         "email_detail": EmailDetailMenu(audio, state),
         "service_menu": ServiceMenu(audio, state),
         "game_service_options": GameServiceOptionsMenu(audio, state),
+        "settings_menu": SettingsMenu(audio, state, lambda: "main_menu"),
+        "settings_menu_ingame": SettingsMenu(audio, state, lambda: "game_menu"),
+        "save_menu": SaveMenu(audio, state),
+        "load_menu": LoadMenu(audio, state),
+        "help_menu": HelpMenu(audio, state),
     }
 
     current_key = "main_menu"
@@ -107,6 +116,7 @@ def main():
         "Nutze die Pfeiltasten zum Navigieren und Enter zum Auswählen."
     )
     time.sleep(0.3)
+    audio.play_music("music_back")
     current_menu.announce_entry()
 
     # ---- Hauptschleife ----
@@ -147,8 +157,10 @@ def main():
             # Header
             header = font.render(
                 f"[{state.company_name or 'Audio Studio Tycoon'}] "
-                f"Geld: {state.money:,} | Fans: {state.fans:,} | "
-                f"Woche: {state.week} | Spiele: {state.games_made}",
+                f"{state.get_text('money', money=state.money)} | "
+                f"{state.get_text('fans')}: {state.fans:,} | "
+                f"{state.get_text('week')}: {state.week} | "
+                f"Games: {state.games_made}",
                 True, (80, 200, 80)
             )
             screen.blit(header, (10, 10))

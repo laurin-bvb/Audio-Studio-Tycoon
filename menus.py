@@ -39,6 +39,7 @@ class Menu:
         if self.options:
             text = self.options[self.current_index]['text']
             pos = f"{self.current_index + 1} von {len(self.options)}"
+            # TODO: Translate pos
             self.audio.speak(f"{text}. {pos}", interrupt=interrupt)
 
     def announce_entry(self):
@@ -107,8 +108,75 @@ class TextInputMenu:
             return self.on_cancel()
         elif event.unicode and event.unicode.isprintable() and len(event.unicode) == 1:
             self.text += event.unicode
-            self.audio.play_sound("click")
             self.audio.speak(event.unicode)
+        return None
+
+    def update(self):
+        pass
+
+
+# ============================================================
+# EINSTELLUNGEN-MENÜ
+# ============================================================
+
+class SettingsMenu:
+    def __init__(self, audio, game_state, on_back):
+        self.audio = audio
+        self.game_state = game_state
+        self.on_back = on_back
+        self.current_index = 0
+        self.options = []
+        self._update_options()
+
+    def _update_options(self):
+        s = self.game_state.settings
+        lang_name = "Deutsch" if s['language'] == 'de' else "English"
+        music_status = self.game_state.get_text('on') if s['music_enabled'] else self.game_state.get_text('off')
+
+        self.options = [
+            {'text': f"{self.game_state.get_text('music')}: {music_status}", 'action': self._toggle_music},
+            {'text': f"{self.game_state.get_text('language')}: {lang_name}", 'action': self._toggle_language},
+            {'text': self.game_state.get_text('back'), 'action': self.on_back}
+        ]
+
+    def _toggle_music(self):
+        self.game_state.settings['music_enabled'] = not self.game_state.settings['music_enabled']
+        self.audio.set_music_enabled(self.game_state.settings['music_enabled'])
+        if self.game_state.settings['music_enabled']:
+            self.audio.play_music("music_back")
+        self._update_options()
+        self.speak_current()
+
+    def _toggle_language(self):
+        new_lang = 'en' if self.game_state.settings['language'] == 'de' else 'de'
+        self.game_state.settings['language'] = new_lang
+        self._update_options()
+        self.audio.speak(self.game_state.get_text('language'))
+        self.speak_current()
+
+    def speak_current(self, interrupt=True):
+        text = self.options[self.current_index]['text']
+        self.audio.speak(text, interrupt=interrupt)
+
+    def announce_entry(self):
+        self.current_index = 0
+        self.audio.speak(self.game_state.get_text('settings_menu'))
+        self.speak_current(interrupt=False)
+
+    def handle_input(self, event):
+        if event.key == pygame.K_UP:
+            self.current_index = (self.current_index - 1) % len(self.options)
+            self.audio.play_sound("click")
+            self.speak_current()
+        elif event.key == pygame.K_DOWN:
+            self.current_index = (self.current_index + 1) % len(self.options)
+            self.audio.play_sound("click")
+            self.speak_current()
+        elif event.key == pygame.K_RETURN:
+            self.audio.play_sound("confirm")
+            return self.options[self.current_index]['action']()
+        elif event.key == pygame.K_ESCAPE:
+            return self.on_back()
         return None
 
     def update(self):
@@ -214,29 +282,27 @@ class SliderMenu:
 
 class MainMenu(Menu):
     def __init__(self, audio, game_state):
+        self.game_state = game_state
         options = [
-            {'text': "Neues Spiel starten", 'action': self.new_game},
-            {'text': "Spielstand laden", 'action': self.load_game},
-            {'text': "Beenden", 'action': self.quit_game},
+            {'text': game_state.get_text('start_new_game'), 'action': self.new_game},
+            {'text': game_state.get_text('load_game'), 'action': self.load_game},
+            {'text': game_state.get_text('settings'), 'action': self.goto_settings},
+            {'text': game_state.get_text('quit'), 'action': self.quit_game},
         ]
-        super().__init__("Hauptmenü", options, audio, game_state)
+        super().__init__(game_state.get_text('main_menu'), options, audio, game_state)
+
+    def goto_settings(self):
+        return "settings_menu"
 
     def new_game(self):
         self.audio.speak("Neues Spiel wird gestartet...")
         return "company_name_input"
 
     def load_game(self):
-        if self.game_state.load_game():
-            self.audio.speak(
-                f"Spielstand geladen! {self.game_state.get_status_text()}"
-            )
-            return "game_menu"
-        else:
-            self.audio.speak("Kein Spielstand gefunden.")
-            return None
+        return "load_menu"
 
     def quit_game(self):
-        self.audio.speak("Auf Wiedersehen!")
+        self.audio.speak(self.game_state.get_text('goodbye'))
         return "quit"
 
 
@@ -247,8 +313,8 @@ class MainMenu(Menu):
 class CompanyNameMenu(TextInputMenu):
     def __init__(self, audio, game_state):
         super().__init__(
-            title="Firmengründung",
-            prompt="Wie soll deine Spielefirma heißen?",
+            title="Firmengründung", # TODO: Translate
+            prompt=game_state.get_text('company_name_prompt'),
             audio=audio,
             game_state=game_state,
             on_confirm=self._confirm,
@@ -278,18 +344,20 @@ class GameMenu(Menu):
         self.audio = audio
         self.game_state = game_state
         options = [
-            {'text': "Firmen-Übersicht", 'action': self.show_status},
-            {'text': "Neues Spiel entwickeln", 'action': self.new_game},
-            {'text': "Personal-Abteilung", 'action': self.goto_hr},
-            {'text': "Forschung und Engines", 'action': self.goto_research},
-            {'text': "Service & Support", 'action': self.goto_service},
-            {'text': "Posteingang", 'action': self.goto_inbox},
-            {'text': "Büro upgraden", 'action': self.goto_office},
-            {'text': "Spielhistorie", 'action': self.show_history},
-            {'text': "Spielstand speichern", 'action': self.save},
-            {'text': "Spiel beenden", 'action': self.quit_game},
+            {'text': game_state.get_text('company_overview'), 'action': self.show_status},
+            {'text': game_state.get_text('develop_new_game'), 'action': self.new_game},
+            {'text': game_state.get_text('hr_department'), 'action': self.goto_hr},
+            {'text': game_state.get_text('research_engines'), 'action': self.goto_research},
+            {'text': game_state.get_text('service_support'), 'action': self.goto_service},
+            {'text': game_state.get_text('inbox'), 'action': self.goto_inbox},
+            {'text': game_state.get_text('upgrade_office'), 'action': self.goto_office},
+            {'text': game_state.get_text('history'), 'action': self.show_history},
+            {'text': game_state.get_text('save_game'), 'action': self.goto_save},
+            {'text': game_state.get_text('wiki'), 'action': self.goto_help},
+            {'text': game_state.get_text('settings'), 'action': self.goto_settings},
+            {'text': game_state.get_text('quit'), 'action': self.quit_game_to_main},
         ]
-        super().__init__("Management-Zentrale", options, audio, game_state)
+        super().__init__(game_state.get_text('management_center'), options, audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -300,8 +368,8 @@ class GameMenu(Menu):
                 f"Ereignis: {event['title']}! {event['text']}"
             )
         self.audio.speak(
-            f"Management-Zentrale - {self.game_state.company_name}. "
-            f"Woche {self.game_state.week}.",
+            f"{self.game_state.get_text('management_center')} - {self.game_state.company_name}. "
+            f"{self.game_state.get_text('week')} {self.game_state.week}.",
             interrupt=False
         )
         self.speak_current(interrupt=False)
@@ -329,24 +397,27 @@ class GameMenu(Menu):
     def goto_office(self):
         return "office_menu"
 
+    def goto_settings(self):
+        return "settings_menu_ingame"
+
     def show_history(self):
         if not self.game_state.game_history:
-            self.audio.speak("Du hast noch keine Spiele entwickelt.")
+            self.audio.speak(self.game_state.get_text('history') + ": Leer.")
             return None
-        self.audio.speak(f"Spielhistorie: {len(self.game_state.game_history)} Spiele.")
+        self.audio.speak(f"{self.game_state.get_text('history')}: {len(self.game_state.game_history)}.")
         for i, game in enumerate(self.game_state.game_history[-5:], 1):
             self.audio.speak(f"{i}. {game.summary()}", interrupt=False)
         return None
 
-    def save(self):
-        self.game_state.save_game()
-        self.audio.speak("Spielstand gespeichert!")
-        return None
+    def goto_save(self):
+        return "save_menu"
 
-    def quit_game(self):
-        self.game_state.save_game()
-        self.audio.speak("Spielstand gespeichert. Auf Wiedersehen!")
-        return "quit"
+    def goto_help(self):
+        return "help_menu"
+
+    def quit_game_to_main(self):
+        self.audio.speak(self.game_state.get_text('goodbye'))
+        return "main_menu"
 
 
 # ============================================================
@@ -358,8 +429,8 @@ class TopicMenu(Menu):
         options = []
         for topic in TOPICS:
             options.append({'text': topic, 'action': lambda t=topic: self._select(t)})
-        options.append({'text': "Abbrechen", 'action': self._cancel})
-        super().__init__("Wähle ein Thema für dein Spiel", options, audio, game_state)
+        options.append({'text': game_state.get_text('back'), 'action': self._cancel})
+        super().__init__(game_state.get_text('select_topic'), options, audio, game_state)
 
     def _select(self, topic):
         self.game_state.current_draft['topic'] = topic
@@ -375,8 +446,8 @@ class GenreMenu(Menu):
         options = []
         for genre in GENRES:
             options.append({'text': genre, 'action': lambda g=genre: self._select(g)})
-        options.append({'text': "Abbrechen", 'action': self._cancel})
-        super().__init__("Wähle ein Genre", options, audio, game_state)
+        options.append({'text': game_state.get_text('back'), 'action': self._cancel})
+        super().__init__(game_state.get_text('select_genre'), options, audio, game_state)
 
     def announce_entry(self):
         topic = self.game_state.current_draft.get('topic', '?')
@@ -411,11 +482,12 @@ class PlatformMenu(Menu):
         self.options = []
         for p in available:
             fee = p['license_fee']
-            fee_text = f" (Lizenz: {fee:,} Euro)" if fee > 0 else ""
+            fee_text = f" (Lizenz: {fee:,} {self.game_state.get_text('money_unit')})" if fee > 0 else ""
             
             def select_action(pn=p['name'], cost=fee):
                 if self.game_state.money < cost:
-                    self.audio.speak(f"Nicht genug Geld für die {pn} Lizenz. Du brauchst {cost:,} Euro.")
+                    # TODO: Translate
+                    self.audio.speak(f"Nicht genug Geld für die {pn} Lizenz. Du brauchst {cost:,} {self.game_state.get_text('money_unit')}.")
                     return None
                 return self._select(pn)
 
@@ -423,8 +495,8 @@ class PlatformMenu(Menu):
                 'text': f"{p['name']}{fee_text}",
                 'action': select_action,
             })
-        self.options.append({'text': "Abbrechen", 'action': self._cancel})
-        self.audio.speak("Wähle eine Plattform für dein Spiel.")
+        self.options.append({'text': self.game_state.get_text('back'), 'action': self._cancel})
+        self.audio.speak(self.game_state.get_text('select_platform'))
         self.speak_current(interrupt=False)
 
     def _select(self, platform_name):
@@ -443,8 +515,8 @@ class AudienceMenu(Menu):
         options = []
         for a in AUDIENCES:
             options.append({'text': a, 'action': lambda au=a: self._select(au)})
-        options.append({'text': "Abbrechen", 'action': self._cancel})
-        super().__init__("Wähle die Zielgruppe", options, audio, game_state)
+        options.append({'text': game_state.get_text('back'), 'action': self._cancel})
+        super().__init__(game_state.get_text('select_audience'), options, audio, game_state)
 
     def _select(self, audience):
         self.game_state.current_draft['audience'] = audience
@@ -467,8 +539,8 @@ class GameSizeMenu(Menu):
                 'text': f"{size['name']} - {size['description']}",
                 'action': lambda s=size: self._select(s)
             })
-        options.append({'text': "Abbrechen", 'action': self._cancel})
-        super().__init__("Wähle die Spielgröße", options, audio, game_state)
+        options.append({'text': game_state.get_text('back'), 'action': self._cancel})
+        super().__init__(game_state.get_text('select_size'), options, audio, game_state)
 
     def _select(self, size_data):
         # Check min employees
@@ -499,8 +571,8 @@ class MarketingMenu(Menu):
                 'text': f"{mark['name']} - {mark['description']}",
                 'action': lambda m=mark: self._select(m)
             })
-        options.append({'text': "Abbrechen", 'action': self._cancel})
-        super().__init__("Marketing wählen", options, audio, game_state)
+        options.append({'text': game_state.get_text('back'), 'action': self._cancel})
+        super().__init__(game_state.get_text('marketing'), options, audio, game_state)
 
     def _select(self, mark_data):
         if self.game_state.money < mark_data['cost']:
@@ -521,7 +593,7 @@ class EngineSelectMenu(Menu):
     def __init__(self, audio, game_state):
         self.audio = audio
         self.game_state = game_state
-        super().__init__("Wähle eine Engine", [], audio, game_state)
+        super().__init__(game_state.get_text('select_engine'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -531,8 +603,8 @@ class EngineSelectMenu(Menu):
                 'text': f"{eng.name}, Tech-Level {eng.tech_level}",
                 'action': lambda e=eng: self._select(e),
             })
-        self.options.append({'text': "Abbrechen", 'action': self._cancel})
-        self.audio.speak("Wähle eine Engine für dein Spiel.")
+        self.options.append({'text': self.game_state.get_text('back'), 'action': self._cancel})
+        self.audio.speak(self.game_state.get_text('select_engine'))
         self.speak_current(interrupt=False)
 
     def _select(self, engine):
@@ -547,8 +619,8 @@ class EngineSelectMenu(Menu):
 class GameNameMenu(TextInputMenu):
     def __init__(self, audio, game_state):
         super().__init__(
-            title="Spielname",
-            prompt="Wie soll dein Spiel heißen?",
+            title=game_state.get_text('game_name'),
+            prompt=game_state.get_text('game_name_prompt_short'), # I'll add this to translations
             audio=audio,
             game_state=game_state,
             on_confirm=self._confirm,
@@ -575,7 +647,7 @@ class GameNameMenu(TextInputMenu):
 class DevelopmentSliderMenu(SliderMenu):
     def __init__(self, audio, game_state):
         super().__init__(
-            title="Spielentwicklung",
+            title=game_state.get_text('dev_progress'),
             audio=audio,
             game_state=game_state,
             slider_names=SLIDER_NAMES,
@@ -655,10 +727,11 @@ class DevProgressMenu:
             if self.phase_index >= len(DEV_PHASES):
                 self.completed = True
                 self.audio.speak(
-                    "Entwicklung abgeschlossen! Drücke Enter für die Reviews."
+                    self.game_state.get_text('dev_completed')
                 )
             else:
                 phase = DEV_PHASES[self.phase_index]
+                # Phase name might be in game_data, still hardcoded there?
                 self.audio.speak(
                     f"Phase {self.phase_index+1} von {len(DEV_PHASES)}: {phase['name']}..."
                 )
@@ -676,10 +749,10 @@ class DevProgressMenu:
 class ReviewResultMenu(Menu):
     def __init__(self, audio, game_state):
         options = [
-            {'text': "Weiter spielen", 'action': self._continue},
-            {'text': "Spiel beenden", 'action': self._quit},
+            {'text': game_state.get_text('back'), 'action': self._continue},
+            {'text': game_state.get_text('quit'), 'action': self._quit},
         ]
-        super().__init__("Spielbewertung", options, audio, game_state)
+        super().__init__(game_state.get_text('review_result'), options, audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -709,6 +782,7 @@ class ReviewResultMenu(Menu):
         # NEU: Detaillierte Berichte sprechen
         for comment in project.review.comments:
             self.audio.speak(comment, interrupt=False)
+        self.audio.play_sound("cash")
         self.audio.speak(
             f"Verkäufe: {project.sales:,} Einheiten. "
             f"Einnahmen: {project.revenue:,} Euro. "
@@ -742,13 +816,13 @@ class HRMenu(Menu):
         self.audio = audio
         self.game_state = game_state
         options = [
-            {'text': "Mitarbeiter einstellen", 'action': self.hire},
-            {'text': "Mitarbeiter anzeigen", 'action': self.show_employees},
-            {'text': "Mitarbeiter trainieren", 'action': self.train},
-            {'text': "Mitarbeiter entlassen", 'action': self.fire},
-            {'text': "Zurück", 'action': self.back},
+            {'text': game_state.get_text('hire_employee'), 'action': self.hire},
+            {'text': game_state.get_text('show_employees'), 'action': self.show_employees},
+            {'text': game_state.get_text('train_employee'), 'action': self.train},
+            {'text': game_state.get_text('fire_employee'), 'action': self.fire},
+            {'text': game_state.get_text('back'), 'action': self.back},
         ]
-        super().__init__("Personal-Abteilung", options, audio, game_state)
+        super().__init__(game_state.get_text('hr_department'), options, audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -801,7 +875,7 @@ class HireMenu(Menu):
         self.audio = audio
         self.game_state = game_state
         self.candidates = []
-        super().__init__("Bewerber", [], audio, game_state)
+        super().__init__(game_state.get_text('candidates'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -809,13 +883,14 @@ class HireMenu(Menu):
         self.options = []
         for c in self.candidates:
             hire_cost = c.salary * 2
+            spec_text = f" Spezialisierung: {c.specialization['name']}." if c.specialization else ""
             self.options.append({
                 'text': f"{c.name}, {c.role}, Level {c.skill_level}. "
-                        f"Gehalt: {c.salary} pro Woche. Einstellung: {hire_cost:,} Euro",
+                        f"Gehalt: {c.salary} pro Woche. {spec_text} Einstellung: {hire_cost:,} Euro",
                 'action': lambda emp=c: self._hire(emp),
             })
-        self.options.append({'text': "Neue Bewerber anzeigen", 'action': self._refresh})
-        self.options.append({'text': "Abbrechen", 'action': self._cancel})
+        self.options.append({'text': self.game_state.get_text('refresh_candidates'), 'action': self._refresh})
+        self.options.append({'text': self.game_state.get_text('back'), 'action': self._cancel})
 
         self.audio.speak("3 Bewerber verfügbar.")
         self.speak_current(interrupt=False)
@@ -848,7 +923,7 @@ class FireMenu(Menu):
     def __init__(self, audio, game_state):
         self.audio = audio
         self.game_state = game_state
-        super().__init__("Mitarbeiter entlassen", [], audio, game_state)
+        super().__init__(game_state.get_text('fire_employee'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -859,7 +934,7 @@ class FireMenu(Menu):
                 'text': f"{emp.name}, {emp.role}. Abfindung: {abfindung:,} Euro",
                 'action': lambda idx=i: self._fire(idx),
             })
-        self.options.append({'text': "Abbrechen", 'action': self._cancel})
+        self.options.append({'text': self.game_state.get_text('back'), 'action': self._cancel})
         self.audio.speak("Wen möchtest du entlassen?")
         self.speak_current(interrupt=False)
 
@@ -885,12 +960,12 @@ class ResearchMenu(Menu):
         self.audio = audio
         self.game_state = game_state
         options = [
-            {'text': "Feature erforschen", 'action': self.research},
-            {'text': "Neue Engine erstellen", 'action': self.create_engine},
-            {'text': "Engines anzeigen", 'action': self.show_engines},
-            {'text': "Zurück", 'action': self.back},
+            {'text': game_state.get_text('research_feature'), 'action': self.research},
+            {'text': game_state.get_text('create_engine_option'), 'action': self.create_engine},
+            {'text': game_state.get_text('show_engines_option'), 'action': self.show_engines},
+            {'text': game_state.get_text('back'), 'action': self.back},
         ]
-        super().__init__("Forschung und Engines", options, audio, game_state)
+        super().__init__(game_state.get_text('research_engines'), options, audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -924,7 +999,7 @@ class FeatureResearchMenu(Menu):
     def __init__(self, audio, game_state):
         self.audio = audio
         self.game_state = game_state
-        super().__init__("Features erforschen", [], audio, game_state)
+        super().__init__(game_state.get_text('research_feature'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -936,8 +1011,8 @@ class FeatureResearchMenu(Menu):
                 'action': lambda fd=f: self._research(fd),
             })
         if not self.options:
-            self.options.append({'text': "Keine neuen Features verfügbar", 'action': lambda: None})
-        self.options.append({'text': "Zurück", 'action': self._cancel})
+            self.options.append({'text': self.game_state.get_text('no_features_available'), 'action': lambda: None})
+        self.options.append({'text': self.game_state.get_text('back'), 'action': self._cancel})
 
         self.audio.speak(f"{len(researchable)} Features zum Erforschen.")
         self.speak_current(interrupt=False)
@@ -962,8 +1037,8 @@ class EngineCreateNameMenu(TextInputMenu):
 
     def __init__(self, audio, game_state):
         super().__init__(
-            title="Engine erstellen",
-            prompt="Wie soll deine neue Engine heißen?",
+            title=game_state.get_text('create_engine_option'),
+            prompt=game_state.get_text('engine_name_prompt'),
             audio=audio,
             game_state=game_state,
             on_confirm=self._confirm,
@@ -987,7 +1062,7 @@ class EngineFeatureSelectMenu(Menu):
         self.audio = audio
         self.game_state = game_state
         self.selected_features = []
-        super().__init__("Engine-Features wählen", [], audio, game_state)
+        super().__init__(game_state.get_text('select_engine_features'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -1009,8 +1084,8 @@ class EngineFeatureSelectMenu(Menu):
                 '_selected': False,
             })
 
-        self.options.append({'text': "Engine erstellen", 'action': self._create})
-        self.options.append({'text': "Abbrechen", 'action': self._cancel})
+        self.options.append({'text': self.game_state.get_text('create_engine_option'), 'action': self._create})
+        self.options.append({'text': self.game_state.get_text('back'), 'action': self._cancel})
 
         name = getattr(self.game_state, '_pending_engine_name', 'Neue Engine')
         self.audio.speak(
@@ -1064,10 +1139,10 @@ class OfficeMenu(Menu):
         self.audio = audio
         self.game_state = game_state
         options = [
-            {'text': "Büro upgraden", 'action': self.upgrade},
-            {'text': "Zurück", 'action': self.back},
+            {'text': game_state.get_text('upgrade_office'), 'action': self.upgrade},
+            {'text': game_state.get_text('back'), 'action': self.back},
         ]
-        super().__init__("Büro-Verwaltung", options, audio, game_state)
+        super().__init__(game_state.get_text('office_management'), options, audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -1116,7 +1191,7 @@ class TrainingEmployeeSelectMenu(Menu):
     def __init__(self, audio, game_state):
         self.audio = audio
         self.game_state = game_state
-        super().__init__("Mitarbeiter für Training wählen", [], audio, game_state)
+        super().__init__(game_state.get_text('select_employee_training'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -1141,7 +1216,7 @@ class TrainingOptionMenu(Menu):
     def __init__(self, audio, game_state):
         self.audio = audio
         self.game_state = game_state
-        super().__init__("Training wählen", [], audio, game_state)
+        super().__init__(game_state.get_text('select_training'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -1181,7 +1256,7 @@ class BankruptcyMenu(Menu):
             {'text': "Zurück zum Hauptmenü", 'action': lambda: "main_menu"},
             {'text': "Spiel beenden", 'action': lambda: "quit"},
         ]
-        super().__init__("BANKROTT", options, audio, game_state)
+        super().__init__(game_state.get_text('bankruptcy'), options, audio, game_state)
 
     def announce_entry(self):
         self.audio.speak(
@@ -1224,7 +1299,7 @@ class EmailDetailMenu(Menu):
     def __init__(self, audio, game_state):
         self.audio = audio
         self.game_state = game_state
-        super().__init__("E-Mail Details", [], audio, game_state)
+        super().__init__(game_state.get_text('email_details'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -1233,8 +1308,8 @@ class EmailDetailMenu(Menu):
         mail.is_read = True
         
         self.options = [
-            {'text': "Antworten / OK", 'action': lambda: "email_inbox"},
-            {'text': "Löschen", 'action': lambda: self._delete(idx)}
+            {'text': self.game_state.get_text('reply_ok'), 'action': lambda: "email_inbox"},
+            {'text': self.game_state.get_text('delete'), 'action': lambda: self._delete(idx)}
         ]
         
         self.audio.speak(f"Von: {mail.sender}. Betreff: {mail.subject}.")
@@ -1251,7 +1326,7 @@ class ServiceMenu(Menu):
     def __init__(self, audio, game_state):
         self.audio = audio
         self.game_state = game_state
-        super().__init__("Service & Support", [], audio, game_state)
+        super().__init__(game_state.get_text('service_support'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -1277,7 +1352,7 @@ class GameServiceOptionsMenu(Menu):
     def __init__(self, audio, game_state):
         self.audio = audio
         self.game_state = game_state
-        super().__init__("Update-Optionen", [], audio, game_state)
+        super().__init__(game_state.get_text('update_options'), [], audio, game_state)
 
     def announce_entry(self):
         self.current_index = 0
@@ -1285,9 +1360,9 @@ class GameServiceOptionsMenu(Menu):
         game = self.game_state.game_history[idx]
         
         self.options = [
-            {'text': f"Kostenloser Patch ({game.bugs} Bugs beheben)", 'action': lambda: self._patch(idx)},
-            {'text': "DLC veröffentlichen (20.000 Euro)", 'action': lambda: self._dlc(idx)},
-            {'text': "Abbrechen", 'action': lambda: "service_menu"}
+            {'text': self.game_state.get_text('free_patch', bugs=game.bugs), 'action': lambda: self._patch(idx)},
+            {'text': self.game_state.get_text('release_dlc_option'), 'action': lambda: self._dlc(idx)},
+            {'text': self.game_state.get_text('back'), 'action': lambda: "service_menu"}
         ]
         self.audio.speak(f"Optionen für {game.name}.")
         self.speak_current(interrupt=False)
@@ -1305,3 +1380,82 @@ class GameServiceOptionsMenu(Menu):
         else:
             self.audio.speak("Nicht genug Geld für die DLC-Entwicklung.")
         return "service_menu"
+
+
+# ============================================================
+# SPEICHER- SLOTS & HILFE
+# ============================================================
+
+class LoadMenu(Menu):
+    def __init__(self, audio, game_state):
+        self.audio = audio
+        self.game_state = game_state
+        super().__init__(game_state.get_text('select_slot'), [], audio, game_state)
+
+    def announce_entry(self):
+        self.current_index = 0
+        slots = self.game_state.get_save_slots_info()
+        self.options = []
+        for i in range(1, 4):
+            self.options.append({
+                'text': slots[i],
+                'action': lambda s=i: self._load(s)
+            })
+        self.options.append({'text': self.game_state.get_text('back'), 'action': lambda: "main_menu"})
+        self.audio.speak(self.game_state.get_text('select_slot'))
+        self.speak_current(interrupt=False)
+
+    def _load(self, slot):
+        if self.game_state.load_game(slot):
+            self.audio.speak(self.game_state.get_text('game_loaded'))
+            return "game_menu"
+        self.audio.speak(self.game_state.get_text('no_savegame'))
+        return None
+
+
+class SaveMenu(Menu):
+    def __init__(self, audio, game_state):
+        self.audio = audio
+        self.game_state = game_state
+        super().__init__(game_state.get_text('select_slot'), [], audio, game_state)
+
+    def announce_entry(self):
+        self.current_index = 0
+        slots = self.game_state.get_save_slots_info()
+        self.options = []
+        for i in range(1, 4):
+            self.options.append({
+                'text': slots[i],
+                'action': lambda s=i: self._save(s)
+            })
+        self.options.append({'text': self.game_state.get_text('back'), 'action': lambda: "game_menu"})
+        self.audio.speak(self.game_state.get_text('select_slot'))
+        self.speak_current(interrupt=False)
+
+    def _save(self, slot):
+        if self.game_state.save_game(slot):
+            self.audio.speak(self.game_state.get_text('game_saved', slot=slot))
+            return "game_menu"
+        return None
+
+
+class HelpMenu(Menu):
+    def __init__(self, audio, game_state):
+        self.audio = audio
+        self.game_state = game_state
+        options = [
+            {'text': game_state.get_text('wiki_concept'), 'action': lambda: self._speak_key('wiki_concept')},
+            {'text': game_state.get_text('wiki_dev'), 'action': lambda: self._speak_key('wiki_dev')},
+            {'text': game_state.get_text('wiki_hr'), 'action': lambda: self._speak_key('wiki_hr')},
+            {'text': game_state.get_text('back'), 'action': lambda: "game_menu"}
+        ]
+        super().__init__(game_state.get_text('wiki'), options, audio, game_state)
+
+    def _speak_key(self, key):
+        self.audio.speak(self.game_state.get_text(key))
+        return None
+
+    def announce_entry(self):
+        self.current_index = 0
+        self.audio.speak(self.game_state.get_text('wiki_welcome'))
+        self.speak_current(interrupt=False)
